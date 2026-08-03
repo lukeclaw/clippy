@@ -63,6 +63,11 @@ public final class History {
         guard item.byteCount > 0 else { return .ignored }
         if let ownBundleID, item.sourceBundleID == ownBundleID { return .ignored }
 
+        // Dropped outright rather than downgraded to memory-only: a password
+        // manager's clipboard has no value in a history, and not recording it is
+        // the only handling with no failure mode.
+        if SensitiveSources.isSensitive(item.sourceBundleID) { return .ignored }
+
         // Identical to the most recent item: do nothing at all. Not a reorder,
         // not a timestamp bump.
         if let first = items.first, first.payload == item.payload {

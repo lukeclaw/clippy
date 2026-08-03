@@ -43,6 +43,7 @@ public final class HistoryStore {
 
     private var db: OpaquePointer?
     private let blobsDirectory: URL
+    private var directory: URL!
 
     /// Default location: `~/Library/Application Support/Clippy/`.
     public static func defaultDirectory() -> URL {
@@ -65,15 +66,48 @@ public final class HistoryStore {
             throw HistoryStoreError.open(lastMessage)
         }
 
+        self.directory = directory
+
         // WAL keeps reads from blocking the capture path, and a busy timeout
         // means a slow write never surfaces as an error.
         try exec("PRAGMA journal_mode = WAL;")
         try exec("PRAGMA busy_timeout = 2000;")
         try createSchema()
+
+        // After the PRAGMAs, so the -wal and -shm files SQLite just created are
+        // tightened too rather than left at the umask.
+        restrictPermissions()
     }
 
     deinit {
         if let db { sqlite3_close(db) }
+    }
+
+    /// Owner-only, stated rather than inherited.
+    ///
+    /// These files were previously created at the process umask — 755 on the
+    /// directories and 644 on the database, meaning world-readable. In practice
+    /// they were unreachable because `~/Library/Application Support` is 700, so
+    /// the protection was real but accidental: it survived only as long as
+    /// nothing changed a parent directory and nothing copied the files
+    /// elsewhere.
+    ///
+    /// Applied on every open, not just creation, so an existing install is
+    /// tightened too.
+    private func restrictPermissions() {
+        let fm = FileManager.default
+
+        for dir in [directory!, blobsDirectory] {
+            try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+        }
+
+        // SQLite creates -wal and -shm itself, at the umask, so they are
+        // included here rather than assumed.
+        for suffix in ["", "-wal", "-shm"] {
+            let path = directory.appendingPathComponent("history.db\(suffix)").path
+            guard fm.fileExists(atPath: path) else { continue }
+            try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        }
     }
 
     // MARK: - Schema
@@ -452,6 +486,9 @@ public final class HistoryStore {
         // Content-addressed: identical bytes are already the right file.
         if !FileManager.default.fileExists(atPath: url.path) {
             try data.write(to: url, options: .atomic)
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: url.path
+            )
         }
         return hash
     }

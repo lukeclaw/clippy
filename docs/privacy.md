@@ -98,11 +98,53 @@ keeps the tool's own operation out of the history.
 Nothing is sent anywhere. There is no network code in this project, and adding
 any should require a reason written down here first.
 
+## Password managers are denylisted — settled
+
+`SensitiveSources` lists password-manager bundle IDs whose clips are **never
+recorded**, whatever markers they set or fail to set.
+
+The marker convention is cooperative, which means trusting the source to declare
+itself. That works for the apps that bother. The denylist does not depend on it,
+and covers the category where a miss is most expensive. Dropped outright rather
+than kept memory-only: a password manager's clipboard has no value in a history,
+and not recording it is the only handling with no failure mode.
+
+Being a denylist, it is inherently incomplete — see the gap below.
+
+## File permissions — settled
+
+The directory and blob store are `0700`; `history.db` and its `-wal` and `-shm`
+files are `0600`. Applied on every open, so an install created before this
+existed is tightened rather than left as it was.
+
+These were previously created at the process umask — `755` and `644`,
+world-readable. In practice they were unreachable, because
+`~/Library/Application Support` is itself `700`. The protection was real but
+accidental: it held only as long as nothing changed a parent directory and
+nothing copied the files elsewhere.
+
 ## Known gap
 
-Applications that hold credentials but don't set marker types are indistinguishable
-from ordinary sources — their content will be recorded in plaintext like anything
-else. Nothing can be done about this from outside; it's noted so the limitation
-is known rather than assumed away.
+Narrowed by the denylist, not closed.
 
-Manual deletion (⌫ in the panel) is the mitigation.
+Credentials that arrive from somewhere other than a password manager are
+indistinguishable from ordinary content: an API key copied out of a `.env` file,
+a token from a web dashboard, a 2FA code, a password pasted through Slack. All of
+it is stored in plaintext.
+
+**This got worse with D17.** Under the old 1000-item cap a copied secret aged out
+within days of normal use. Text history is now kept forever, so anything that
+slips through stays on disk indefinitely. That is a real increase in exposure and
+it arrived as a side effect of a storage decision rather than a considered one.
+
+Two things bound the risk, neither of them a fix: FileVault covers the machine at
+rest, and the store is readable only by the account that owns it. Neither helps
+against a process running as you, which is the realistic threat.
+
+Mitigations available today: ⌫ in the panel deletes an item, and deleted rows are
+genuinely removed from the file — verified against the raw bytes, not assumed.
+Deleting `~/Library/Application Support/Clippy/` clears everything.
+
+The open idea is content heuristics — treating high-entropy strings and known
+key prefixes (`sk-`, `ghp_`, `AKIA`) as concealed regardless of source. Imperfect
+by nature, and not yet decided.

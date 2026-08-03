@@ -269,3 +269,37 @@ by a test rather than left to be discovered. FTS5 is the escape hatch.
 
 Related: the panel builds at most 500 rows and says "+N more" rather than
 truncating silently, since every row costs a Preflight pass for its badge.
+
+---
+
+## D21 — Password managers are denylisted, not trusted to mark themselves
+
+`SensitiveSources` holds bundle IDs whose clips are never recorded, regardless of
+markers. Dropped outright rather than kept memory-only: a password manager's
+clipboard has no value in a history, and not recording it is the only handling
+with no failure mode.
+
+`ConcealedType` is a cooperative convention — it requires the source to declare
+itself, and works only for apps that bother. This does not depend on that.
+
+**Limits, stated because a denylist invites over-confidence:** it does nothing
+for an API key from a `.env` file, a token from a web dashboard, or a password
+pasted through Slack. Those are still plaintext, and since D17 they are plaintext
+*forever* rather than ageing out after a thousand clips. Content heuristics are
+the only thing that would narrow that further; undecided.
+
+---
+
+## D22 — Store permissions are stated, not inherited
+
+Directory and blobs `0700`, database and its `-wal`/`-shm` `0600`, applied on
+every open so existing installs are tightened.
+
+They were previously created at the umask — `755` and `644`, world-readable —
+and were safe only because `~/Library/Application Support` happens to be `700`.
+Protection by accident holds until something changes a parent directory or copies
+the files somewhere else.
+
+Verified separately, and worth recording because the opposite was assumed: a
+`DELETE` really does remove the bytes from the SQLite file. Checked against the
+raw file with rows spanning multiple pages after a checkpoint, not inferred.
